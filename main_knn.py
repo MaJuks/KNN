@@ -1,82 +1,78 @@
+import numpy as np
 import pandas as pd
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.preprocessing import LabelEncoder
 
-# 1. Carregar a tabela de dados corretamente usando pd.read_excel
-df = pd.read_excel("Lanches.xlsx")
+## CRIANDO O DATAFRAME EM PYTHON
+caminho_do_arquivo = "Lanches.xlsx"
+tabela = pd.read_excel(caminho_do_arquivo)
+tabela.replace("?", pd.NA, inplace=True)
 
-# 2. Substituir '?' por valores nulos
-df.replace("?", pd.NA, inplace=True)
-print(df)
-# 3. Verificar se há valores faltantes
-print("Contagem de valores nulos por coluna:")
-print(df.isnull().sum())
+print("Tabela original:")
+print(tabela)
 
-# 4. Codificar dados categóricos (se houver)
-label_encoders = {}
-for column in df.select_dtypes(include=["object"]).columns:
-    le = LabelEncoder()
-    df[column] = le.fit_transform(df[column].astype(str))
-    label_encoders[column] = le
+## PEGANDO CADA SUBTIPO DENTRO DAS COLUNAS
+opcoes_tipo_pao = tabela["Tipo de pão"].unique()
+opcoes_tipo_queijo = tabela["Tipo de queijo"].unique()
+opcoes_vegetais = tabela["Vegetais"].unique()
+opcoes_tipo_molho = tabela["Tipo de molho"].unique()
+opcoes_tipo_proteina = tabela["Tipo de proteína"].unique()
 
-# 5. Separar as features (X) e a variável target (y)
-target_column = "Tipo de proteína"  # Ajuste se necessário
-X = df.drop(columns=[target_column])
-y = df[target_column]
 
-# 6. Verificar e imprimir valores nulos na variável target
-print("Valores nulos na variável target:")
-print(y.isnull().sum())
+## FUNCAO PARA CONVERTER OS SUBTIPOS EM VALORES NUMÉRICOS DE 0 A 1
+def normalizar_opcoes(opcoes):
+    n = len(opcoes) - 1
+    return {valor: i / n if n > 0 else 0 for i, valor in enumerate(opcoes)}
 
-# 7. Tratar valores faltantes
-X_train = X[y.notnull()]
-y_train = y[y.notnull()]
-X_missing = X[y.isnull()]
 
-# 8. Verificar se temos dados para treinar o modelo
-print("Shape de X_train:", X_train.shape)
-print("Shape de y_train:", y_train.shape)
-print("Shape de X_missing:", X_missing.shape)
+## CONVERTENDO TIPOS EM NUMEROS
+mapeamento_pao = normalizar_opcoes(opcoes_tipo_pao)
+mapeamento_queijo = normalizar_opcoes(opcoes_tipo_queijo)
+mapeamento_vegetais = normalizar_opcoes(opcoes_vegetais)
+mapeamento_molho = normalizar_opcoes(opcoes_tipo_molho)
+mapeamento_proteina = normalizar_opcoes(opcoes_tipo_proteina)
 
-if X_train.shape[0] > 0 and y_train.shape[0] > 0:
-    # 9. Treinar o modelo KNN com diferentes valores de K
-    knn_values = [1, 3, 5]
-    predictions = {}
+## CRIANDO UMA NOVA TABELA COM NUMEROS
+tabela_numerica = tabela.copy()
+tabela_numerica["Tipo de pão"] = tabela_numerica["Tipo de pão"].map(mapeamento_pao)
+tabela_numerica["Tipo de queijo"] = tabela_numerica["Tipo de queijo"].map(mapeamento_queijo)
+tabela_numerica["Vegetais"] = tabela_numerica["Vegetais"].map(mapeamento_vegetais)
+tabela_numerica["Tipo de molho"] = tabela_numerica["Tipo de molho"].map(mapeamento_molho)
+tabela_numerica["Tipo de proteína"] = tabela_numerica["Tipo de proteína"].map(mapeamento_proteina)
 
-    for k in knn_values:
-        knn_model = KNeighborsClassifier(n_neighbors=k)
-        knn_model.fit(X_train, y_train)
+print("\nTabela numérica:")
+print(tabela_numerica)
 
-        if X_missing.shape[0] > 0:
-            y_pred = knn_model.predict(X_missing)
-            # Armazenar as predições
-            predictions[f"KNN{k}"] = y_pred
-        else:
-            print(f"Nenhum dado faltante para previsão com KNN{k}.")
-else:
-    print("Não há dados suficientes para treinar o modelo.")
 
-# 10. Preencher a coluna 'Tipo de proteína' com as predições do KNN
-for k in knn_values:
-    if f"KNN{k}" in predictions:
-        df.loc[df[target_column].isnull(), target_column] = predictions[f"KNN{k}"]
+## PEGANDO LINHA COM VALOR INCOMPLETO
+linha_incompleta = tabela_numerica.iloc[-1]
+linha_incompleta = linha_incompleta[:-1]
 
-# 11. Se ainda houver valores nulos, preencher com a moda
-if df[target_column].isnull().sum() > 0:
-    moda_tipo_proteina = df[target_column].mode()[0]
-    df[target_column].fillna(moda_tipo_proteina, inplace=True)
+## LINHAS COMPLETAS PRA FAZER COMPARACAO
+matriz_completa = tabela_numerica.iloc[:-1, :-1]
 
-# 12. Decodificar as predições de volta para strings
-for k in knn_values:
-    if f"KNN{k}" in predictions:
-        predictions[f"KNN{k}"] = [label_encoders[target_column].inverse_transform([pred])[0] for pred in predictions[f"KNN{k}"]]
+## CALCULANDO DISTANCIAS
+distancias = np.sqrt(((matriz_completa - linha_incompleta) ** 2).sum(axis=1))
+indices_distancias = np.argsort(distancias)
 
-# 13. Imprimir resultados das predições
-for k in knn_values:
-    if f"KNN{k}" in predictions:
-        print(f"Predições para KNN{k}: {predictions[f'KNN{k}']}")
-    else:
-        print(f"Nenhuma predição disponível para KNN{k}.")
+# PEGANDO INDICES DAS LINHAS COM AS MENORES DISTANCIAS
+indices_knn1 = distancias.idxmin()
+indices_knn3 = indices_distancias[:3]
+indices_knn5 = indices_distancias[:5]
 
-# 14. Verificar o resultado final
-print(df)
+
+print("\nAs 5 linhas mais próxima encontrada:")
+for indice in indices_knn5:
+    print(tabela.iloc[indice])
+    print()
+# KNN1
+print("KKN1 = " + tabela.at[indices_knn5[0], "Tipo de proteína"])
+
+# KNN3 - Predição baseada nas 3 primeiras distâncias
+
+knn3_proteinas = [tabela.at[i, "Tipo de proteína"] for i in indices_knn3]
+mais_repetida_knn3 = max(set(knn3_proteinas), key=knn3_proteinas.count)
+print("KNN3 = " + mais_repetida_knn3)
+
+# KNN5 - Predição baseada nas 5 primeiras distâncias
+knn5_proteinas = [tabela.at[i, "Tipo de proteína"] for i in indices_knn5]
+mais_repetida_knn5 = max(set(knn5_proteinas), key=knn5_proteinas.count)
+print("KNN5 = " + mais_repetida_knn5)
